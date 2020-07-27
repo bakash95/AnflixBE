@@ -36,22 +36,22 @@ public class SearchFacade {
 		return new RestTemplate();
 	}
 
-	@Cacheable(key="#searchRequest.getSearchString")
+	@Cacheable(key = "#searchRequest.searchData", cacheNames = { "search" })
 	public ServiceHttpResponse search(SearchRequest searchRequest) {
 		SearchResponse searchResponse = new SearchResponse();
-		ResponseEntity<JsonNode> resFromAPI = restTemplate.getForEntity(
-				MessageFormat.format(searchQuery, apiKey, searchRequest.getSearchData()), JsonNode.class);
+		ResponseEntity<JsonNode> resFromAPI = restTemplate
+				.getForEntity(MessageFormat.format(searchQuery, apiKey, searchRequest.getSearchData()), JsonNode.class);
 		if (resFromAPI.getBody() != null && resFromAPI.getBody().get("Search") != null) {
 			searchResponse.setSearchResponse(resFromAPI.getBody().get("Search"));
 		}
 		return searchResponse;
 	}
 
-	@Cacheable(key="#searchRequest.getSearchString")
+	@Cacheable(key = "#searchRequest.searchData", cacheNames = { "searchTitle" })
 	public ServiceHttpResponse searchTitle(SearchRequest searchRequest) {
 		SearchResponse searchResponse = new SearchResponse();
-		ResponseEntity<JsonNode> resFromAPI = restTemplate.getForEntity(
-				MessageFormat.format(searchTitle, apiKey, searchRequest.getSearchData()), JsonNode.class);
+		ResponseEntity<JsonNode> resFromAPI = restTemplate
+				.getForEntity(MessageFormat.format(searchTitle, apiKey, searchRequest.getSearchData()), JsonNode.class);
 		if (resFromAPI.getBody() != null) {
 			searchResponse.setSearchResponse(resFromAPI.getBody());
 		}
