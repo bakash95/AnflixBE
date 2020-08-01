@@ -1,60 +1,61 @@
 package com.AnflixBE.facade;
 
-import java.text.MessageFormat;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.cache.annotation.Cacheable;
-import org.springframework.context.annotation.Bean;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 
 import com.AnflixBE.modal.SearchRequest;
 import com.AnflixBE.modal.SearchResponse;
 import com.AnflixBE.modal.ServiceHttpResponse;
+import com.AnflixBE.service.SearchService;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 @Service
 public class SearchFacade {
-
-	private static final String API_KEY = "API_KEY";
-
-	@Value("${search_query}")
-	private String searchQuery;
-
-	@Value("${search_title}")
-	private String searchTitle;
-
-	private String apiKey = System.getenv(API_KEY);
+	private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
 
 	@Autowired
-	RestTemplate restTemplate;
+	SearchService searchService;
 
-	@Bean
-	public RestTemplate getRestTemplate() {
-		return new RestTemplate();
-	}
-
-	@Cacheable(key = "#searchRequest.searchData", cacheNames = { "search" })
 	public ServiceHttpResponse search(SearchRequest searchRequest) {
-		SearchResponse searchResponse = new SearchResponse();
-		ResponseEntity<JsonNode> resFromAPI = restTemplate
-				.getForEntity(MessageFormat.format(searchQuery, apiKey, searchRequest.getSearchData()), JsonNode.class);
-		if (resFromAPI.getBody() != null && resFromAPI.getBody().get("Search") != null) {
-			searchResponse.setSearchResponse(resFromAPI.getBody().get("Search"));
+		SearchResponse searchResponse = searchService.genericSearch(searchRequest);
+		JsonNode searchData = searchResponse.getSearchResponse();
+		List<Future> listOfFutures = new ArrayList<Future>();
+		if (searchData != null) {
+			ArrayNode arrayNode = (ArrayNode) searchData;
+			for (JsonNode jsonNode : arrayNode) {
+				String title = jsonNode.get("Title").asText();
+				SearchRequest titleSearchRequest = new SearchRequest();
+				titleSearchRequest.setSearchData(title);
+				CompletableFuture<SearchResponse> titleSearch = (CompletableFuture<SearchResponse>) searchService
+						.searchTitle(titleSearchRequest);
+				listOfFutures.add(titleSearch);
+				titleSearch.whenComplete(
+						(result, ex) -> ((ObjectNode) jsonNode).put("movieData", result.getSearchResponse()));
+			}
 		}
+		CompletableFuture.allOf(listOfFutures.toArray(new CompletableFuture[listOfFutures.size()])).join();
 		return searchResponse;
 	}
 
-	@Cacheable(key = "#searchRequest.searchData", cacheNames = { "searchTitle" })
 	public ServiceHttpResponse searchTitle(SearchRequest searchRequest) {
 		SearchResponse searchResponse = new SearchResponse();
-		ResponseEntity<JsonNode> resFromAPI = restTemplate
-				.getForEntity(MessageFormat.format(searchTitle, apiKey, searchRequest.getSearchData()), JsonNode.class);
-		if (resFromAPI.getBody() != null) {
-			searchResponse.setSearchResponse(resFromAPI.getBody());
+		CompletableFuture<SearchResponse> future = searchService.searchTitle(searchRequest);
+		try {
+			searchResponse = future.get();
+		} catch (InterruptedException | ExecutionException e) {
+			LOGGER.error("exception in future execution ", e);
 		}
+
 		return searchResponse;
 	}
 
